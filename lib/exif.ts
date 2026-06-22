@@ -153,6 +153,10 @@ export function convertDataURLToFormat(
 
       const mime = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg"
       const output = canvas.toDataURL(mime, format === "jpg" ? quality : undefined)
+      if (!output.startsWith(`data:${mime}`)) {
+        reject(new Error(`${format.toUpperCase()} encoding is not supported by this browser`))
+        return
+      }
       resolve(output)
     }
     img.onerror = () => reject(new Error("Could not load image for conversion"))
@@ -285,6 +289,66 @@ export function addExifToWebP(webpDataURL: string, taggedJpegDataURL: string): s
   }
 
   return bytesToDataURL(output, "image/webp")
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function makePngChunk(name: string, payload: Uint8Array): Uint8Array {
+  const chunk = new Uint8Array(12 + payload.length)
+  const view = new DataView(chunk.buffer)
+  view.setUint32(0, payload.length, false)
+  for (let i = 0; i < 4; i++) chunk[4 + i] = name.charCodeAt(i)
+  chunk.set(payload, 8)
+  view.setUint32(8 + payload.length, crc32(chunk.subarray(4, 8 + payload.length)), false)
+  return chunk
+}
+
+/** Add the JPEG's TIFF-formatted EXIF payload to a PNG eXIf chunk. */
+export function addExifToPNG(pngDataURL: string, taggedJpegDataURL: string): string {
+  const exif = extractJpegExif(taggedJpegDataURL)
+  if (!exif) return pngDataURL
+
+  const png = dataURLToBytes(pngDataURL)
+  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+  if (!signature.every((byte, index) => png[index] === byte)) return pngDataURL
+
+  const chunks: Uint8Array[] = []
+  let insertedExif = false
+  for (let offset = 8; offset + 12 <= png.length; ) {
+    const view = new DataView(png.buffer, png.byteOffset + offset, 4)
+    const size = view.getUint32(0, false)
+    const end = offset + 12 + size
+    if (end > png.length) return pngDataURL
+    const name = String.fromCharCode(...png.subarray(offset + 4, offset + 8))
+
+    if (name !== "eXIf") chunks.push(png.slice(offset, end))
+    if (name === "IHDR" && !insertedExif) {
+      chunks.push(makePngChunk("eXIf", exif))
+      insertedExif = true
+    }
+    offset = end
+    if (name === "IEND") break
+  }
+
+  if (!insertedExif) return pngDataURL
+  const totalLength = 8 + chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const output = new Uint8Array(totalLength)
+  output.set(signature, 0)
+  let outputOffset = 8
+  for (const chunk of chunks) {
+    output.set(chunk, outputOffset)
+    outputOffset += chunk.length
+  }
+  return bytesToDataURL(output, "image/png")
 }
 
 export function buildDownloadFilename(filename: string, format: string) {

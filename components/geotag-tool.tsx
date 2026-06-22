@@ -18,6 +18,7 @@ import {
   toJpegDataURL,
   convertDataURLToFormat,
   addExifToWebP,
+  addExifToPNG,
   readExistingGeo,
   readExifMetadata,
   writeExif,
@@ -207,7 +208,9 @@ export function GeoTagTool() {
         const finalDataURL =
           outputFormat === "webp"
             ? addExifToWebP(convertedDataURL, taggedJpeg)
-            : convertedDataURL
+            : outputFormat === "png"
+              ? addExifToPNG(convertedDataURL, taggedJpeg)
+              : convertedDataURL
         const outputName = buildDownloadFilename(img.name, outputFormat)
 
         downloadDataURL(finalDataURL, outputName)
