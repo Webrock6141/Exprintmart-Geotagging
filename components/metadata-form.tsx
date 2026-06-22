@@ -56,7 +56,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="Image title (EXIF DocumentName)"
           value={meta.title}
           onChange={(e) => onChange({ title: e.target.value })}
-           required
+          required
         />
       </div>
 
@@ -67,7 +67,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="Subject of the image (EXIF XPSubject)"
           value={meta.subject}
           onChange={(e) => onChange({ subject: e.target.value })}
-           required
+          required
         />
       </div>
 
@@ -80,7 +80,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
             placeholder="25.28109370886218"
             value={meta.latitude}
             onChange={(e) => onChange({ latitude: e.target.value })}
-             required
+            required
           />
           <Toggle
             label="Latitude direction"
@@ -140,7 +140,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="geotag, photography, travel, exprintmart"
           value={meta.keywords}
           onChange={(e) => onChange({ keywords: e.target.value.slice(0, MAX_KEYWORDS) })}
-           required
+          required
         />
         <p className="text-xs text-muted-foreground">Comma-separated (EXIF XPKeywords)</p>
       </div>
@@ -157,7 +157,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
             )}
           >
             {meta.description.length}/{MAX_DESCRIPTION}
-            
+
           </span>
         </div>
         <Textarea
@@ -181,37 +181,45 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           onChange={(e) => onChange({ author: e.target.value })}
         />
       </div>
-
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="websiteName">Copyright</Label>
-        <Input
-          id="websiteName"
-          placeholder="Exprintmart"
-          value={meta.websiteName}
-          onChange={(e) => onChange({ websiteName: e.target.value })}
-        />
-        <p className="text-xs text-muted-foreground">Stored in EXIF Copyright</p>
-      </div>
-
-      {/* Dropdown Field */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2 mt-2">
-        <Label htmlFor="downloadFormat" className="font-semibold text-foreground">
-          Download File Format
-        </Label>
-        <select
-          id="downloadFormat"
-          value={selectedFormat}
-          onChange={(e) => onChange({ downloadFormat: e.target.value })}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-        >
-          <option value="jpg">JPG (.jpg)</option>
-          <option value="webp">WebP (.webp)</option>
-          <option value="png">PNG (.png)</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            @{new Date().getFullYear()},
+          </span>
+          <Input
+            id="websiteName"
+            placeholder="Exprintmart"
+            value={meta.websiteName}
+            onChange={(e) => onChange({ websiteName: e.target.value })}
+          />
+        </div>
         <p className="text-xs text-muted-foreground">
-          Choose your preferred final format output when downloading files.
+          Preview: © {new Date().getFullYear()}, {meta.websiteName || "Exprintmart"}
         </p>
       </div>
+      <p className="text-xs text-muted-foreground">Stored in EXIF Copyright</p>
     </div>
+
+      {/* Dropdown Field */ }
+  <div className="flex flex-col gap-1.5 sm:col-span-2 mt-2">
+    <Label htmlFor="downloadFormat" className="font-semibold text-foreground">
+      Download File Format
+    </Label>
+    <select
+      id="downloadFormat"
+      value={selectedFormat}
+      onChange={(e) => onChange({ downloadFormat: e.target.value })}
+      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+    >
+      <option value="jpg">JPG (.jpg)</option>
+      <option value="webp">WebP (.webp)</option>
+      <option value="png">PNG (.png)</option>
+    </select>
+    <p className="text-xs text-muted-foreground">
+      Choose your preferred final format output when downloading files.
+    </p>
+  </div>
+    </div >
   )
 }
