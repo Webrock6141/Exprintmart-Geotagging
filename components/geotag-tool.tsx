@@ -17,6 +17,7 @@ import {
   readFileAsDataURL,
   toJpegDataURL,
   convertDataURLToFormat,
+  addExifToWebP,
   readExistingGeo,
   readExifMetadata,
   writeExif,
@@ -192,38 +193,22 @@ export function GeoTagTool() {
         ? selectedFormat
         : "jpg"
 
-    const shouldForceJpegForMetadata =
-      outputFormat !== "jpg" &&
-      Boolean(
-        meta.title ||
-        meta.subject ||
-        meta.description ||
-        meta.author ||
-        meta.keywords ||
-        meta.website ||
-        meta.websiteName ||
-        meta.latitude ||
-        meta.longitude,
-      )
-    const effectiveFormat = shouldForceJpegForMetadata ? "jpg" : outputFormat
-
     setProcessing(true)
     setStatus(null)
     try {
-      if (shouldForceJpegForMetadata) {
-        setStatus(
-          "Using JPG for this download so EXIF metadata remains visible in image properties.",
-        )
-      }
       let count = 0
       for (const img of images) {
         const jpegSource = img.isJpeg ? img.dataURL : await toJpegDataURL(img.dataURL)
         const taggedJpeg = writeExif(jpegSource, meta)
-        const finalDataURL =
-          effectiveFormat === "jpg"
+        const convertedDataURL =
+          outputFormat === "jpg"
             ? taggedJpeg
-            : await convertDataURLToFormat(taggedJpeg, effectiveFormat)
-        const outputName = buildDownloadFilename(img.name, effectiveFormat)
+            : await convertDataURLToFormat(taggedJpeg, outputFormat)
+        const finalDataURL =
+          outputFormat === "webp"
+            ? addExifToWebP(convertedDataURL, taggedJpeg)
+            : convertedDataURL
+        const outputName = buildDownloadFilename(img.name, outputFormat)
 
         downloadDataURL(finalDataURL, outputName)
 

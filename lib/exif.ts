@@ -160,6 +160,133 @@ export function convertDataURLToFormat(
   })
 }
 
+function dataURLToBytes(dataURL: string): Uint8Array {
+  const base64 = dataURL.split(",")[1]
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+function bytesToDataURL(bytes: Uint8Array, mime: string): string {
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return `data:${mime};base64,${btoa(binary)}`
+}
+
+function readUint24LE(bytes: Uint8Array, offset: number): number {
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16)
+}
+
+function writeUint24LE(bytes: Uint8Array, offset: number, value: number) {
+  bytes[offset] = value & 0xff
+  bytes[offset + 1] = (value >>> 8) & 0xff
+  bytes[offset + 2] = (value >>> 16) & 0xff
+}
+
+function makeWebPChunk(name: string, payload: Uint8Array): Uint8Array {
+  const chunk = new Uint8Array(8 + payload.length + (payload.length & 1))
+  for (let i = 0; i < 4; i++) chunk[i] = name.charCodeAt(i)
+  new DataView(chunk.buffer).setUint32(4, payload.length, true)
+  chunk.set(payload, 8)
+  return chunk
+}
+
+/** Extract the TIFF-formatted EXIF payload from a JPEG APP1 segment. */
+function extractJpegExif(jpegDataURL: string): Uint8Array | null {
+  const jpeg = dataURLToBytes(jpegDataURL)
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null
+
+  let offset = 2
+  while (offset + 4 <= jpeg.length) {
+    if (jpeg[offset] !== 0xff) break
+    const marker = jpeg[offset + 1]
+    if (marker === 0xda || marker === 0xd9) break
+    const length = (jpeg[offset + 2] << 8) | jpeg[offset + 3]
+    if (length < 2 || offset + 2 + length > jpeg.length) break
+    if (
+      marker === 0xe1 &&
+      jpeg[offset + 4] === 0x45 &&
+      jpeg[offset + 5] === 0x78 &&
+      jpeg[offset + 6] === 0x69 &&
+      jpeg[offset + 7] === 0x66 &&
+      jpeg[offset + 8] === 0 &&
+      jpeg[offset + 9] === 0
+    ) {
+      return jpeg.slice(offset + 10, offset + 2 + length)
+    }
+    offset += 2 + length
+  }
+  return null
+}
+
+/** Add the JPEG's EXIF payload to a canvas-generated WebP RIFF container. */
+export function addExifToWebP(webpDataURL: string, taggedJpegDataURL: string): string {
+  const exif = extractJpegExif(taggedJpegDataURL)
+  if (!exif) return webpDataURL
+
+  const webp = dataURLToBytes(webpDataURL)
+  const ascii = (offset: number, length: number) =>
+    String.fromCharCode(...webp.subarray(offset, offset + length))
+  if (ascii(0, 4) !== "RIFF" || ascii(8, 4) !== "WEBP") return webpDataURL
+
+  const chunks: Uint8Array[] = []
+  let vp8xPayload: Uint8Array | null = null
+  let width = 0
+  let height = 0
+  let hasAlpha = false
+
+  for (let offset = 12; offset + 8 <= webp.length; ) {
+    const name = ascii(offset, 4)
+    const size = new DataView(webp.buffer, webp.byteOffset + offset + 4, 4).getUint32(0, true)
+    const end = offset + 8 + size + (size & 1)
+    if (end > webp.length) break
+    const payload = webp.subarray(offset + 8, offset + 8 + size)
+
+    if (name === "VP8X" && size >= 10) {
+      vp8xPayload = new Uint8Array(payload)
+      width = readUint24LE(payload, 4) + 1
+      height = readUint24LE(payload, 7) + 1
+    } else if (name === "VP8 " && size >= 10) {
+      width ||= (payload[6] | (payload[7] << 8)) & 0x3fff
+      height ||= (payload[8] | (payload[9] << 8)) & 0x3fff
+    } else if (name === "VP8L" && size >= 5) {
+      width ||= 1 + payload[1] + ((payload[2] & 0x3f) << 8)
+      height ||= 1 + ((payload[2] >>> 6) | (payload[3] << 2) | ((payload[4] & 0x0f) << 10))
+      hasAlpha ||= (payload[4] & 0x10) !== 0
+    } else if (name === "ALPH") {
+      hasAlpha = true
+    }
+
+    if (name !== "VP8X" && name !== "EXIF") chunks.push(webp.slice(offset, end))
+    offset = end
+  }
+
+  if (!width || !height) return webpDataURL
+  const vp8x = vp8xPayload ?? new Uint8Array(10)
+  vp8x[0] |= 0x08
+  if (hasAlpha) vp8x[0] |= 0x10
+  writeUint24LE(vp8x, 4, width - 1)
+  writeUint24LE(vp8x, 7, height - 1)
+
+  const orderedChunks = [makeWebPChunk("VP8X", vp8x), ...chunks, makeWebPChunk("EXIF", exif)]
+  const totalLength = 12 + orderedChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const output = new Uint8Array(totalLength)
+  output.set([0x52, 0x49, 0x46, 0x46], 0)
+  new DataView(output.buffer).setUint32(4, totalLength - 8, true)
+  output.set([0x57, 0x45, 0x42, 0x50], 8)
+  let outputOffset = 12
+  for (const chunk of orderedChunks) {
+    output.set(chunk, outputOffset)
+    outputOffset += chunk.length
+  }
+
+  return bytesToDataURL(output, "image/webp")
+}
+
 export function buildDownloadFilename(filename: string, format: string) {
   const cleanName = filename.replace(/\.[^/.]+$/, "")
   const ext = format === "png" ? ".png" : format === "webp" ? ".webp" : ".jpg"
