@@ -18,6 +18,7 @@ import {
   toJpegDataURL,
   convertDataURLToFormat,
   readExistingGeo,
+  readExifMetadata,
   writeExif,
   downloadDataURL,
   buildDownloadFilename,
@@ -53,9 +54,34 @@ const EMPTY_META: GeoMetadata = {
   description: "",
   author: "",
   websiteName: "Exprintmart",
+  downloadFormat: "jpg",
 }
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"]
+
+function mergeMissingMetadata(
+  current: GeoMetadata,
+  incoming: Partial<GeoMetadata>,
+): GeoMetadata {
+  const next: GeoMetadata = { ...current }
+
+  if (!next.title && incoming.title) next.title = incoming.title
+  if (!next.subject && incoming.subject) next.subject = incoming.subject
+  if (!next.latitude && incoming.latitude) next.latitude = incoming.latitude
+  if (!next.longitude && incoming.longitude) next.longitude = incoming.longitude
+  if (!next.latRef && incoming.latRef) next.latRef = incoming.latRef
+  if (!next.lonRef && incoming.lonRef) next.lonRef = incoming.lonRef
+  if (!next.website && incoming.website) next.website = incoming.website
+  if (!next.keywords && incoming.keywords) next.keywords = incoming.keywords
+  if (!next.description && incoming.description) next.description = incoming.description
+  if (!next.author && incoming.author) next.author = incoming.author
+  if (!next.websiteName && incoming.websiteName) next.websiteName = incoming.websiteName
+  if (!next.downloadFormat && incoming.downloadFormat) {
+    next.downloadFormat = incoming.downloadFormat
+  }
+
+  return next
+}
 
 export function GeoTagTool() {
   const [images, setImages] = useState<ImageItem[]>([])
@@ -77,16 +103,25 @@ export function GeoTagTool() {
     }
 
     let prefill: { latitude: number; longitude: number } | null = null
+    let firstImageMetadata: Partial<GeoMetadata> | null = null
 
     const items = await Promise.all(
       files.map(async (file) => {
         const dataURL = await readFileAsDataURL(file)
         const isJpeg = file.type === "image/jpeg"
         let existingGeo: { latitude: number; longitude: number } | null = null
+        let parsedMetadata: Partial<GeoMetadata> = {}
+
         if (isJpeg) {
           existingGeo = readExistingGeo(dataURL)
           if (existingGeo && !prefill) prefill = existingGeo
+
+          parsedMetadata = readExifMetadata(dataURL)
+          if (!firstImageMetadata && Object.keys(parsedMetadata).length > 0) {
+            firstImageMetadata = parsedMetadata
+          }
         }
+
         return {
           id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
           file,
@@ -102,6 +137,10 @@ export function GeoTagTool() {
 
     setImages((prev) => [...prev, ...items])
     setStatus(null)
+
+    if (firstImageMetadata) {
+      setMeta((prev) => mergeMissingMetadata(prev, firstImageMetadata as Partial<GeoMetadata>))
+    }
 
     // Pre-fill coordinates from the first image that already has a geotag.
     if (prefill) {
@@ -153,18 +192,38 @@ export function GeoTagTool() {
         ? selectedFormat
         : "jpg"
 
+    const shouldForceJpegForMetadata =
+      outputFormat !== "jpg" &&
+      Boolean(
+        meta.title ||
+        meta.subject ||
+        meta.description ||
+        meta.author ||
+        meta.keywords ||
+        meta.website ||
+        meta.websiteName ||
+        meta.latitude ||
+        meta.longitude,
+      )
+    const effectiveFormat = shouldForceJpegForMetadata ? "jpg" : outputFormat
+
     setProcessing(true)
     setStatus(null)
     try {
+      if (shouldForceJpegForMetadata) {
+        setStatus(
+          "Using JPG for this download so EXIF metadata remains visible in image properties.",
+        )
+      }
       let count = 0
       for (const img of images) {
         const jpegSource = img.isJpeg ? img.dataURL : await toJpegDataURL(img.dataURL)
         const taggedJpeg = writeExif(jpegSource, meta)
         const finalDataURL =
-          outputFormat === "jpg"
+          effectiveFormat === "jpg"
             ? taggedJpeg
-            : await convertDataURLToFormat(taggedJpeg, outputFormat)
-        const outputName = buildDownloadFilename(img.name, outputFormat)
+            : await convertDataURLToFormat(taggedJpeg, effectiveFormat)
+        const outputName = buildDownloadFilename(img.name, effectiveFormat)
 
         downloadDataURL(finalDataURL, outputName)
 

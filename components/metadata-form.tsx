@@ -210,7 +210,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           <option value="png">PNG (.png)</option>
         </select>
         <p className="text-xs text-muted-foreground">
-          Choose your preferred final format output when downloading files.
+          Choose your preferred format. JPG is the most reliable for preserving EXIF details in image properties.
         </p>
       </div>
     </div>
