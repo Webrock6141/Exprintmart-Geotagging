@@ -307,9 +307,14 @@ export function writeExif(jpegDataURL: string, meta: GeoMetadata): string {
     zeroth[piexif.ImageIFD.XPAuthor] = encodeXPString(meta.author)
   }
 
+  // if (meta.websiteName) {
+  //   zeroth[piexif.ImageIFD.Copyright] = meta.websiteName
   if (meta.websiteName) {
-    zeroth[piexif.ImageIFD.Copyright] = meta.websiteName
-  }
+  const raw = meta.websiteName.trim()
+  const copyright = raw.startsWith("©") ? raw : `© 2014, ${raw}`
+  zeroth[piexif.ImageIFD.Copyright] = copyright
+}
+  // }
 
   if (meta.keywords) {
     zeroth[piexif.ImageIFD.XPKeywords] = encodeXPString(meta.keywords.slice(0, MAX_KEYWORDS))

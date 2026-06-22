@@ -16,9 +16,11 @@ import { MapPreview } from "@/components/map-preview"
 import {
   readFileAsDataURL,
   toJpegDataURL,
+  convertDataURLToFormat,
   readExistingGeo,
   writeExif,
   downloadDataURL,
+  buildDownloadFilename,
   type GeoMetadata,
 } from "@/lib/exif"
 
@@ -144,16 +146,27 @@ export function GeoTagTool() {
       setStatus("Upload at least one image first.")
       return
     }
+
+    const selectedFormat = (meta.downloadFormat || "jpg").toLowerCase()
+    const outputFormat =
+      selectedFormat === "png" || selectedFormat === "webp" || selectedFormat === "jpg"
+        ? selectedFormat
+        : "jpg"
+
     setProcessing(true)
     setStatus(null)
     try {
       let count = 0
       for (const img of images) {
         const jpegSource = img.isJpeg ? img.dataURL : await toJpegDataURL(img.dataURL)
-        const tagged = writeExif(jpegSource, meta)
-        const baseName = img.name.replace(/\.[^.]+$/, "")
-        const outputName = `${baseName}.webp`
-        downloadDataURL(tagged, outputName)
+        const taggedJpeg = writeExif(jpegSource, meta)
+        const finalDataURL =
+          outputFormat === "jpg"
+            ? taggedJpeg
+            : await convertDataURLToFormat(taggedJpeg, outputFormat)
+        const outputName = buildDownloadFilename(img.name, outputFormat)
+
+        downloadDataURL(finalDataURL, outputName)
 
         setDownloadHistory((prev) => {
           const entry: DownloadHistoryItem = {
