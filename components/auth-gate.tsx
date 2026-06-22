@@ -14,8 +14,8 @@ const DEFAULT_PASSWORD = process.env.NEXT_PUBLIC_LOGIN_PASSWORD || "Exprintmart@
 export function AuthGate() {
   const [isAuthed, setIsAuthed] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [username, setUsername] = useState(DEFAULT_USERNAME)
-  const [password, setPassword] = useState(DEFAULT_PASSWORD)
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
   const [error, setError] = useState("")
 
   useEffect(() => {
